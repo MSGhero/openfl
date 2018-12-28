@@ -815,7 +815,7 @@ class TextField extends InteractiveObject {
 		
 		if (charIndex < 0 || charIndex > text.length) return -1;
 		
-		var index = __textEngine.getLineBreakIndex ();
+		var index = __textEngine.getForcedBreakIndex ();
 		var startIndex = 0;
 		
 		while (index > -1) {
@@ -830,7 +830,7 @@ class TextField extends InteractiveObject {
 				
 			}
 			
-			index = __textEngine.getLineBreakIndex (index + 1);
+			index = __textEngine.getForcedBreakIndex (index + 1);
 			
 		}
 		
@@ -1037,7 +1037,7 @@ class TextField extends InteractiveObject {
 		
 		if (charIndex >= text.length) return text.length - startIndex + 1;
 		
-		var endIndex = __textEngine.getLineBreakIndex (charIndex) + 1;
+		var endIndex = __textEngine.getForcedBreakIndex (charIndex) + 1;
 		
 		if (endIndex == 0) endIndex = __text.length;
 		return endIndex - startIndex;

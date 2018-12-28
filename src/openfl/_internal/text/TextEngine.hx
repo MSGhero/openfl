@@ -608,7 +608,7 @@ class TextEngine {
 	}
 	
 	
-	public function getLineBreakIndex (startIndex:Int = 0):Int {
+	public function getForcedBreakIndex (startIndex:Int = 0):Int {
 
 		var cr = text.indexOf ("\n", startIndex);
 		var lf = text.indexOf ("\r", startIndex);
@@ -616,6 +616,18 @@ class TextEngine {
 		if (cr == -1) return lf;
 		if (lf == -1) return cr;
 		return cr < lf ? cr : lf;
+		
+	}
+	
+	
+	public function getPotentialBreakIndex (startIndex:Int = 0):Int {
+
+		var sp = text.indexOf (" ", startIndex);
+		var hy = text.indexOf ("-", startIndex);
+		
+		if (sp == -1) return hy;
+		if (hy == -1) return sp;
+		return sp < hy ? sp : hy;
 		
 	}
 	
@@ -819,9 +831,9 @@ class TextEngine {
 		var layoutGroup:TextLayoutGroup = null, positions = null;
 		var widthValue = 0.0, heightValue = 0.0, maxHeightValue = 0.0;
 		
-		var previousSpaceIndex = -2; // -1 equals not found, -2 saves extra comparison in `breakIndex == previousSpaceIndex`
-		var spaceIndex = text.indexOf (" ");
-		var breakIndex = getLineBreakIndex ();
+		var previousPotentialBreakIndex = -2; // -1 equals not found, -2 saves extra comparison in `forcedBreakIndex == previousPotentialBreakIndex`
+		var potentialBreakIndex = getPotentialBreakIndex ();
+		var forcedBreakIndex = getForcedBreakIndex ();
 		
 		var offsetX = 2.0;
 		var offsetY = 2.0;
@@ -1337,20 +1349,20 @@ class TextEngine {
 		
 		while (textIndex < maxLoops) {
 			
-			if ((breakIndex > -1) && (spaceIndex == -1 || breakIndex < spaceIndex)) {
+			if ((forcedBreakIndex > -1) && (potentialBreakIndex == -1 || forcedBreakIndex < potentialBreakIndex)) {
 				// if a line break is the next thing that needs to be dealt with
 				
-				if (textIndex <= breakIndex) {
+				if (textIndex <= forcedBreakIndex) {
 					
-					setFormattedPositions (textIndex, breakIndex);
-					placeText (breakIndex);
+					setFormattedPositions (textIndex, forcedBreakIndex);
+					placeText (forcedBreakIndex);
 					
 					layoutGroup = null;
 					
 				} else if (layoutGroup != null && layoutGroup.startIndex != layoutGroup.endIndex) {
 					
 					// Trim the last space from the line width, for correct TextFormatAlign.RIGHT alignment
-					if (layoutGroup.endIndex == spaceIndex) {
+					if (layoutGroup.endIndex == potentialBreakIndex) {
 						
 						layoutGroup.width -= layoutGroup.getAdvance (layoutGroup.positions.length - 1);
 						
@@ -1360,7 +1372,7 @@ class TextEngine {
 					
 				}
 				
-				if (formatRange.end == breakIndex) {
+				if (formatRange.end == forcedBreakIndex) {
 					
 					nextFormatRange ();
 					setLineMetrics ();
@@ -1368,7 +1380,7 @@ class TextEngine {
 					
 				}
 				
-				if (breakIndex >= text.length - 1) {
+				if (forcedBreakIndex >= text.length - 1) {
 					
 					// Trailing line breaks do not add to textHeight (offsetY), but they do add to numLines (lineIndex)
 					offsetY -= maxHeightValue;
@@ -1377,11 +1389,11 @@ class TextEngine {
 				
 				alignBaseline ();
 				
-				textIndex = breakIndex + 1;
-				breakIndex = getLineBreakIndex (textIndex);
+				textIndex = forcedBreakIndex + 1;
+				forcedBreakIndex = getForcedBreakIndex (textIndex);
 				
-			} else if (spaceIndex > -1) {
-				// if a space is the next thing that needs to be dealt with
+			} else if (potentialBreakIndex > -1) {
+				// if a space/hyphen/etc is the next thing that needs to be dealt with
 				
 				if (layoutGroup != null && layoutGroup.startIndex != layoutGroup.endIndex) {
 					
@@ -1397,19 +1409,19 @@ class TextEngine {
 					
 					var endIndex = -1;
 					
-					if (spaceIndex == -1) {
+					if (potentialBreakIndex == -1) {
 						
-						endIndex = breakIndex;
+						endIndex = forcedBreakIndex;
 						
 					}
 					
 					else {
 						
-						endIndex = spaceIndex + 1;
+						endIndex = potentialBreakIndex + 1;
 						
-						if (breakIndex > -1 && breakIndex < endIndex) {
+						if (forcedBreakIndex > -1 && forcedBreakIndex < endIndex) {
 							
-							endIndex = breakIndex;
+							endIndex = forcedBreakIndex;
 							
 						}
 						
@@ -1425,7 +1437,7 @@ class TextEngine {
 					
 					if (lineFormat.align == JUSTIFY) {
 						
-						if (positions.length > 0 && textIndex == previousSpaceIndex) {
+						if (positions.length > 0 && textIndex == previousPotentialBreakIndex && text.charCodeAt (textIndex) == UTF8_SPACE) {
 							
 							// Trim left space of this word
 							textIndex++;
@@ -1436,7 +1448,7 @@ class TextEngine {
 							
 						}
 						
-						if (positions.length > 0 && endIndex == spaceIndex + 1) {
+						if (positions.length > 0 && endIndex == potentialBreakIndex + 1 && text.charCodeAt (endIndex - 1) == UTF8_SPACE) {
 							
 							// Trim right space of this word
 							endIndex--;
@@ -1454,7 +1466,7 @@ class TextEngine {
 							
 							wrap = true;
 							
-							if (positions.length > 0 && endIndex == spaceIndex + 1) {
+							if (positions.length > 0 && endIndex == potentialBreakIndex + 1 && text.charCodeAt (endIndex - 1) == UTF8_SPACE) {
 								
 								// if last letter is a space, avoid word wrap if possible
 								// TODO: Handle multiple spaces
@@ -1496,7 +1508,7 @@ class TextEngine {
 							
 							layoutGroup = layoutGroups[i];
 							
-							if (i > 0 && layoutGroup.startIndex > previousSpaceIndex) {
+							if (i > 0 && layoutGroup.startIndex > previousPotentialBreakIndex) {
 								
 								offsetCount++;
 								
@@ -1510,7 +1522,7 @@ class TextEngine {
 							
 						}
 						
-						if (textIndex == previousSpaceIndex + 1) {
+						if (textIndex == previousPotentialBreakIndex + 1) {
 							
 							alignBaseline ();
 							
@@ -1540,12 +1552,12 @@ class TextEngine {
 						
 					} else {
 						
-						if (layoutGroup != null && textIndex == spaceIndex) {
+						if (layoutGroup != null && textIndex == potentialBreakIndex) {
 							
 							// TODO: does this case ever happen?
 							if (lineFormat.align != JUSTIFY) {
 								
-								layoutGroup.endIndex = spaceIndex;
+								layoutGroup.endIndex = potentialBreakIndex;
 								layoutGroup.positions = layoutGroup.positions.concat (positions);
 								layoutGroup.width += widthValue;
 								
@@ -1594,7 +1606,7 @@ class TextEngine {
 							
 							// If next char is newline, process it immediately and prevent useless extra layout groups
 							// TODO: is this needed?
-							if (breakIndex == endIndex) endIndex++;
+							if (forcedBreakIndex == endIndex) endIndex++;
 							
 							textIndex = endIndex;
 							
@@ -1602,30 +1614,30 @@ class TextEngine {
 						
 					}
 					
-					var nextSpaceIndex = text.indexOf (" ", textIndex);
+					var nextSpaceIndex = getPotentialBreakIndex (textIndex);
 					
 					// Check if we can continue wrapping this line until the next line-break or end-of-String.
-					// When `previousSpaceIndex == breakIndex`, the loop has finished growing layoutGroup.endIndex until the end of this line.
+					// When `previousPotentialBreakIndex == forcedBreakIndex`, the loop has finished growing layoutGroup.endIndex until the end of this line.
 					
-					if (breakIndex == previousSpaceIndex) {
+					if (forcedBreakIndex == previousPotentialBreakIndex) {
 						
-						layoutGroup.endIndex = breakIndex;
+						layoutGroup.endIndex = forcedBreakIndex;
 						
-						if (breakIndex - layoutGroup.startIndex - layoutGroup.positions.length < 0) {
+						if (forcedBreakIndex - layoutGroup.startIndex - layoutGroup.positions.length < 0) {
 							
 							// Newline has no size
 							layoutGroup.positions.push (#if (js && html5) 0.0 #else null #end);
 							
 						}
 						
-						textIndex = breakIndex + 1;
+						textIndex = forcedBreakIndex + 1;
 						
 					}
 					
-					previousSpaceIndex = spaceIndex;
-					spaceIndex = nextSpaceIndex;
+					previousPotentialBreakIndex = potentialBreakIndex;
+					potentialBreakIndex = nextSpaceIndex;
 					
-					if ((breakIndex > -1 && breakIndex <= textIndex && (spaceIndex > breakIndex || spaceIndex == -1)) || textIndex > text.length) {
+					if ((forcedBreakIndex > -1 && forcedBreakIndex <= textIndex && (potentialBreakIndex > forcedBreakIndex || potentialBreakIndex == -1)) || textIndex > text.length) {
 						
 						break;
 						
@@ -1738,6 +1750,7 @@ class TextEngine {
 								
 								if (layoutGroups[j].lineIndex == lineIndex) {
 									
+									// TODO: does this need hyphen handling?
 									if (j == 0 || text.charCodeAt (layoutGroups[j].startIndex - 1) == " ".code){
 										
 										lineLength++;
