@@ -1494,12 +1494,12 @@ class TextField extends InteractiveObject {
 	
 	@:noCompletion private function __disableInput ():Void {
 		
-		if (__inputEnabled && stage != null) {
+		if (__inputEnabled && Lib.current.stage != null) {
 			
 			#if lime
-			stage.window.textInputEnabled = false;
-			stage.window.onTextInput.remove (window_onTextInput);
-			stage.window.onKeyDown.remove (window_onKeyDown);
+			Lib.current.stage.window.textInputEnabled = false;
+			Lib.current.stage.window.onTextInput.remove (window_onTextInput);
+			Lib.current.stage.window.onKeyDown.remove (window_onKeyDown);
 			#end
 			
 			__inputEnabled = false;
@@ -1547,18 +1547,18 @@ class TextField extends InteractiveObject {
 	@:noCompletion private function __enableInput ():Void {
 		
 		#if lime
-		if (stage != null) {
+		if (Lib.current.stage != null) {
 			
-			stage.window.textInputEnabled = true;
+			Lib.current.stage.window.textInputEnabled = true;
 			
 			if (!__inputEnabled) {
 				
-				stage.window.textInputEnabled = true;
+				Lib.current.stage.window.textInputEnabled = true;
 				
-				if (!stage.window.onTextInput.has (window_onTextInput)) {
+				if (!Lib.current.stage.window.onTextInput.has (window_onTextInput)) {
 					
-					stage.window.onTextInput.add (window_onTextInput);
-					stage.window.onKeyDown.add (window_onKeyDown);
+					Lib.current.stage.window.onTextInput.add (window_onTextInput);
+					Lib.current.stage.window.onKeyDown.add (window_onKeyDown);
 					
 				}
 				
@@ -3029,7 +3029,7 @@ class TextField extends InteractiveObject {
 		
 		if (value != __textEngine.selectable && type == INPUT) {
 			
-			if (stage != null && stage.focus == this) {
+			if (Lib.current.stage != null && Lib.current.stage.focus == this) {
 				
 				__startTextInput ();
 				
@@ -3383,7 +3383,7 @@ class TextField extends InteractiveObject {
 	
 	@:noCompletion private function this_onFocusIn (event:FocusEvent):Void {
 		
-		if (type == INPUT && stage != null && stage.focus == this) {
+		if (type == INPUT && Lib.current.stage != null && Lib.current.stage.focus == this) {
 			
 			__startTextInput ();
 			
@@ -3404,11 +3404,11 @@ class TextField extends InteractiveObject {
 			
 		} else {
 			
-			if (stage != null) {
+			if (Lib.current.stage != null) {
 				
 				#if lime
-				stage.window.onTextInput.remove (window_onTextInput);
-				stage.window.onKeyDown.remove (window_onKeyDown);
+				Lib.current.stage.window.onTextInput.remove (window_onTextInput);
+				Lib.current.stage.window.onKeyDown.remove (window_onKeyDown);
 				#end
 				
 			}
