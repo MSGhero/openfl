@@ -67,6 +67,7 @@ class TextEngine
 	public var maxScrollV(get, null):Int;
 	public var multiline:Bool;
 	public var numLines(default, null):Int;
+	public var paragraphs(default, null):Vector<TextParagraph>;
 	public var restrict(default, set):UTF8String;
 	public var scrollH:Int;
 	@:isVar public var scrollV(get, set):Int;
@@ -138,6 +139,8 @@ class TextEngine
 		layoutGroups = new Vector();
 		textFormatRanges = new Vector();
 
+		paragraphs = new Vector();
+		
 		#if (js && html5)
 		if (__context == null)
 		{
@@ -764,28 +767,17 @@ class TextEngine
 
 		if (text == null || text == "") return;
 
+		var paragraph:TextParagraph;
+		
+		var line:TextLine = null;
+		
 		var rangeIndex = -1;
 		var formatRange:TextFormatRange = null;
 		var font = null;
 
 		var currentFormat = TextField.__defaultTextFormat.clone();
-
-		// line metrics
-		var leading = 0; // TODO: is maxLeading needed, just like with ascent? In case multiple formats in the same line have different leading values
-		var ascent = 0.0, maxAscent = 0.0;
-		var descent = 0.0;
-
-		// paragraph metrics
-		var align:TextFormatAlign = LEFT;
-		var blockIndent = 0;
-		var bullet = false;
-		var indent = 0;
-		var leftMargin = 0;
-		var rightMargin = 0;
-		var firstLineOfParagraph = true;
-
-		var tabStops = null; // TODO: maybe there's a better init value (not sure what this actually is)
-
+		var ascent = 0.0, descent = 0.0;
+		
 		var layoutGroup:TextLayoutGroup = null, positions = null;
 		var widthValue = 0.0, heightValue = 0, maxHeightValue = 0;
 		var previousSpaceIndex = -2; // -1 equals not found, -2 saves extra comparison in `breakIndex == previousSpaceIndex`
@@ -905,129 +897,6 @@ class TextEngine
 			return width;
 		}
 
-		#if !js inline #end function getTextWidth(text:String):Float
-
-		{
-			#if (js && html5)
-			return __context.measureText(text).width;
-			#else
-			if (__textLayout == null)
-			{
-				__textLayout = new TextLayout();
-			}
-
-			var width = 0.0;
-
-			__textLayout.text = null;
-			__textLayout.font = font;
-
-			if (formatRange.format.size != null)
-			{
-				__textLayout.size = formatRange.format.size;
-			}
-
-			// __textLayout.direction = RIGHT_TO_LEFT;
-			// __textLayout.script = ARABIC;
-
-			__textLayout.text = text;
-
-			for (position in __textLayout.positions)
-			{
-				width += position.advance.x;
-			}
-
-			return width;
-			#end
-		}
-
-		#if !js inline #end function getBaseX():Float
-
-		{
-			// TODO: swap margins in RTL
-			return GUTTER + leftMargin + blockIndent + (firstLineOfParagraph ? indent : 0);
-		}
-
-		#if !js inline #end function getWrapWidth():Float
-
-		{
-			// TODO: swap margins in RTL
-			return width - GUTTER - rightMargin - getBaseX();
-		}
-
-		#if !js inline #end function nextLayoutGroup(startIndex, endIndex):Void
-
-		{
-			if (layoutGroup == null || layoutGroup.startIndex != layoutGroup.endIndex)
-			{
-				layoutGroup = new TextLayoutGroup(formatRange.format, startIndex, endIndex);
-				layoutGroups.push(layoutGroup);
-			}
-			else
-			{
-				layoutGroup.format = formatRange.format;
-				layoutGroup.startIndex = startIndex;
-				layoutGroup.endIndex = endIndex;
-			}
-		}
-
-		#if !js inline #end function setLineMetrics():Void
-
-		{
-			if (currentFormat.__ascent != null)
-			{
-				ascent = currentFormat.size * currentFormat.__ascent;
-				descent = currentFormat.size * currentFormat.__descent;
-			}
-			else if (#if lime font != null && font.unitsPerEM != 0 #else false #end)
-			{
-				#if lime
-				ascent = (font.ascender / font.unitsPerEM) * currentFormat.size;
-				descent = Math.abs((font.descender / font.unitsPerEM) * currentFormat.size);
-				#end
-			}
-			else
-			{
-				ascent = currentFormat.size;
-				descent = currentFormat.size * 0.185;
-			}
-
-			leading = currentFormat.leading;
-
-			heightValue = Math.ceil(ascent + descent + leading);
-
-			if (heightValue > maxHeightValue)
-			{
-				maxHeightValue = heightValue;
-			}
-
-			if (ascent > maxAscent)
-			{
-				maxAscent = ascent;
-			}
-		}
-
-		#if !js inline #end function setParagraphMetrics():Void
-
-		{
-			firstLineOfParagraph = true;
-
-			align = currentFormat.align != null ? currentFormat.align : LEFT;
-			blockIndent = currentFormat.blockIndent != null ? currentFormat.blockIndent : 0;
-			indent = currentFormat.indent != null ? currentFormat.indent : 0;
-			leftMargin = currentFormat.leftMargin != null ? currentFormat.leftMargin : 0;
-			rightMargin = currentFormat.rightMargin != null ? currentFormat.rightMargin : 0;
-
-			if (currentFormat.bullet != null)
-			{
-				// TODO
-			}
-
-			if (currentFormat.tabStops != null)
-			{
-				// TODO, may not actually belong in paragraph metrics
-			}
-		}
-
 		#if !js inline #end function nextFormatRange():Bool
 
 		{
@@ -1043,177 +912,32 @@ class TextEngine
 
 				font = getFontInstance(currentFormat);
 
+				if (currentFormat.__ascent != null)
+				{
+					ascent = currentFormat.size * currentFormat.__ascent;
+					descent = currentFormat.size * currentFormat.__descent;
+				}
+				else if (#if lime font != null && font.unitsPerEM != 0 #else false #end)
+				{
+					#if lime
+					ascent = (font.ascender / font.unitsPerEM) * currentFormat.size;
+					descent = Math.abs((font.descender / font.unitsPerEM) * currentFormat.size);
+					#end
+				}
+				else
+				{
+					ascent = currentFormat.size;
+					descent = currentFormat.size * 0.185;
+				}
+				
+				layoutGroup = null;
+				
 				return true;
 			}
 
 			return false;
 		}
-
-		#if !js inline #end function setFormattedPositions(startIndex:Int, endIndex:Int)
-
-		{
-			// sets the positions of the text from start to end, including format changes if there are any
-			if (startIndex >= endIndex)
-			{
-				positions = [];
-				widthValue = 0;
-			}
-			else if (endIndex <= formatRange.end)
-			{
-				positions = getPositions(text, startIndex, endIndex);
-				widthValue = getPositionsWidth(positions);
-			}
-			else
-			{
-				var tempIndex = startIndex;
-				var tempRangeEnd = formatRange.end;
-				var countRanges = 0;
-
-				positions = [];
-				widthValue = 0;
-
-				while (true)
-				{
-					if (tempIndex != tempRangeEnd)
-					{
-						var tempPositions = getPositions(text, tempIndex, tempRangeEnd);
-						positions = positions.concat(tempPositions);
-					}
-
-					if (tempRangeEnd != endIndex)
-					{
-						if (!nextFormatRange())
-						{
-							Log.warn("You found a bug in OpenFL's text code! Please save a copy of your project and contact Joshua Granick (@singmajesty) so we can fix this.");
-							break;
-						}
-
-						tempIndex = tempRangeEnd;
-						tempRangeEnd = endIndex < formatRange.end ? endIndex : formatRange.end;
-
-						countRanges++;
-					}
-					else
-					{
-						widthValue = getPositionsWidth(positions);
-						break;
-					}
-				}
-
-				rangeIndex -= countRanges + 1;
-				nextFormatRange(); // get back to the formatRange and font
-			}
-		}
-
-		#if !js inline #end function placeFormattedText(endIndex:Int):Void
-
-		{
-			if (endIndex <= formatRange.end)
-			{
-				// don't worry about placing multiple formats if a space or break happens first
-
-				positions = getPositions(text, textIndex, endIndex);
-				widthValue = getPositionsWidth(positions);
-
-				nextLayoutGroup(textIndex, endIndex);
-
-				layoutGroup.positions = positions;
-				layoutGroup.offsetX = offsetX + getBaseX();
-				layoutGroup.ascent = ascent;
-				layoutGroup.descent = descent;
-				layoutGroup.leading = leading;
-				layoutGroup.lineIndex = lineIndex;
-				layoutGroup.offsetY = offsetY + GUTTER;
-				layoutGroup.width = widthValue;
-				layoutGroup.height = heightValue;
-
-				offsetX += widthValue;
-
-				if (endIndex == formatRange.end)
-				{
-					layoutGroup = null;
-					nextFormatRange();
-					setLineMetrics();
-				}
-			}
-			else
-			{
-				// fill in all text from start to end, including any format changes
-
-				while (true)
-				{
-					var tempRangeEnd = endIndex < formatRange.end ? endIndex : formatRange.end;
-
-					if (textIndex != tempRangeEnd)
-					{
-						positions = getPositions(text, textIndex, tempRangeEnd);
-						widthValue = getPositionsWidth(positions);
-
-						nextLayoutGroup(textIndex, tempRangeEnd);
-
-						layoutGroup.positions = positions;
-						layoutGroup.offsetX = offsetX + getBaseX();
-						layoutGroup.ascent = ascent;
-						layoutGroup.descent = descent;
-						layoutGroup.leading = leading;
-						layoutGroup.lineIndex = lineIndex;
-						layoutGroup.offsetY = offsetY + GUTTER;
-						layoutGroup.width = widthValue;
-						layoutGroup.height = heightValue;
-
-						offsetX += widthValue;
-
-						textIndex = tempRangeEnd;
-					}
-
-					if (tempRangeEnd == formatRange.end) layoutGroup = null;
-
-					if (tempRangeEnd == endIndex) break;
-
-					if (!nextFormatRange())
-					{
-						Log.warn("You found a bug in OpenFL's text code! Please save a copy of your project and contact Joshua Granick (@singmajesty) so we can fix this.");
-						break;
-					}
-
-					setLineMetrics();
-				}
-			}
-
-			textIndex = endIndex;
-		}
-
-		#if !js inline #end function alignBaseline():Void
-
-		{
-			// aligns the baselines of all characters in a single line
-
-			setLineMetrics();
-
-			var i = layoutGroups.length;
-
-			while (--i > -1)
-			{
-				var lg = layoutGroups[i];
-
-				if (lg.lineIndex < lineIndex) break;
-				if (lg.lineIndex > lineIndex) continue;
-
-				lg.ascent = maxAscent;
-				lg.height = maxHeightValue;
-			}
-
-			offsetY += maxHeightValue;
-
-			maxAscent = 0.0;
-			maxHeightValue = 0;
-
-			++lineIndex;
-			offsetX = 0;
-
-			firstLineOfParagraph = false; // TODO: need to thoroughly test this
-		}
-
+/*
 		#if !js inline #end function breakLongWords(endIndex:Int):Void
 
 		{
@@ -1264,7 +988,7 @@ class TextEngine
 
 						if (i - bufferCount > 0)
 						{
-							setFormattedPositions(textIndex, textIndex + i - bufferCount);
+							//setFormattedPositions(textIndex, textIndex + i - bufferCount);
 							positionWidth = widthValue;
 						}
 						else
@@ -1274,17 +998,17 @@ class TextEngine
 							i = 1;
 							bufferCount = 0;
 
-							setFormattedPositions(textIndex, textIndex + 1);
+							//setFormattedPositions(textIndex, textIndex + 1);
 							positionWidth = 0; // breaks out of the loops
 						}
 					}
 				}
 
 				placeIndex = textIndex + i - bufferCount;
-				placeFormattedText(placeIndex);
-				alignBaseline();
+				//placeFormattedText(placeIndex);
+				//alignBaseline();
 
-				setFormattedPositions(placeIndex, endIndex);
+				//setFormattedPositions(placeIndex, endIndex);
 
 				remainingPositions = positions;
 				tempWidth = widthValue;
@@ -1292,328 +1016,209 @@ class TextEngine
 
 			// positions only contains the final unbroken line at the end
 		}
-
-		#if !js inline #end function placeText(endIndex:Int):Void
+*/
+		#if !js inline #end function placeText(startIndex:Int, endIndex:Int):Array<TextLayoutGroup>
 
 		{
-			if (width >= GUTTER * 2 && wordWrap)
+			var ret = [];
+			var intermediateIndex = formatRange.end < endIndex ? formatRange.end : endIndex;
+			while (startIndex < endIndex)
 			{
-				breakLongWords(endIndex);
-			}
+				layoutGroup = new TextLayoutGroup(formatRange.format, startIndex, intermediateIndex);
+				ret.push(layoutGroup);
 
-			placeFormattedText(endIndex);
+				layoutGroup.positions = getPositions(text, startIndex, intermediateIndex);
+				layoutGroup.lineIndex = lineIndex;
+				layoutGroup.width = getPositionsWidth(layoutGroup.positions);
+				layoutGroup.ascent = ascent;
+				layoutGroup.descent = descent;
+				
+				startIndex = intermediateIndex;
+				
+				if (intermediateIndex < endIndex)
+				{
+					nextFormatRange(); // TODO: error check
+					intermediateIndex = formatRange.end < endIndex ? formatRange.end : endIndex;
+				}
+			}
+			
+			return ret;
 		}
-
-		nextFormatRange();
-		setParagraphMetrics();
-		setLineMetrics();
-
-		var wrap;
-		var maxLoops = text.length +
-			1; // Do an extra iteration to ensure a LayoutGroup is created in case the last line is empty (multiline or trailing line break).
-		// TODO: check if the +1 is still needed, since the extra layout group is handled separately
-
-		while (textIndex < maxLoops)
+		
+		function layoutParagraph(paragraph:TextParagraph):Void
 		{
-			if ((breakIndex > -1) && (spaceIndex == -1 || breakIndex < spaceIndex))
+			rangeIndex = -1;
+			
+			if (paragraph.startIndex < paragraph.endIndex)
 			{
-				// if a line break is the next thing that needs to be dealt with
-				// TODO: when is this condition ever false?
-				if (textIndex <= breakIndex)
+				for (i in 0...textFormatRanges.length)
 				{
-					setFormattedPositions(textIndex, breakIndex);
-					placeText(breakIndex);
-
-					layoutGroup = null;
-				}
-				else if (layoutGroup != null && layoutGroup.startIndex != layoutGroup.endIndex)
-				{
-					// Trim the last space from the line width, for correct TextFormatAlign.RIGHT alignment
-					if (layoutGroup.endIndex == spaceIndex)
-					{
-						layoutGroup.width -= layoutGroup.getAdvance(layoutGroup.positions.length - 1);
-					}
-
-					layoutGroup = null;
-				}
-
-				alignBaseline();
-
-				// TODO: is this necessary or already handled by placeText above?
-				if (formatRange.end == breakIndex)
-				{
-					nextFormatRange();
-					setLineMetrics();
-				}
-
-				textIndex = breakIndex + 1;
-				previousBreakIndex = breakIndex;
-				breakIndex = getLineBreakIndex(textIndex);
-
-				setParagraphMetrics();
-			}
-			else if (spaceIndex > -1)
-			{
-				// if a space is the next thing that needs to be dealt with
-
-				if (layoutGroup != null && layoutGroup.startIndex != layoutGroup.endIndex)
-				{
-					layoutGroup = null;
-				}
-
-				wrap = false;
-
-				while (true)
-				{
-					if (textIndex >= text.length) break;
-
-					var endIndex = -1;
-
-					if (spaceIndex == -1)
-					{
-						endIndex = breakIndex;
-					}
-					else
-					{
-						endIndex = spaceIndex + 1;
-
-						if (breakIndex > -1 && breakIndex < endIndex)
-						{
-							endIndex = breakIndex;
-						}
-					}
-
-					if (endIndex == -1)
-					{
-						endIndex = text.length;
-					}
-
-					setFormattedPositions(textIndex, endIndex);
-
-					if (align == JUSTIFY)
-					{
-						if (positions.length > 0 && textIndex == previousSpaceIndex)
-						{
-							// Trim left space of this word
-							textIndex++;
-
-							var spaceWidth = #if (js && html5) positions.shift() #else positions.shift().advance.x #end;
-							widthValue -= spaceWidth;
-							offsetX += spaceWidth;
-						}
-
-						if (positions.length > 0 && endIndex == spaceIndex + 1)
-						{
-							// Trim right space of this word
-							endIndex--;
-
-							var spaceWidth = #if (js && html5) positions.pop() #else positions.pop().advance.x #end;
-							widthValue -= spaceWidth;
-						}
-					}
-
-					if (wordWrap)
-					{
-						if (offsetX + widthValue > getWrapWidth())
-						{
-							wrap = true;
-
-							if (positions.length > 0 && endIndex == spaceIndex + 1)
-							{
-								// if last letter is a space, avoid word wrap if possible
-								// TODO: Handle multiple spaces
-
-								var lastPosition = positions[positions.length - 1];
-								var spaceWidth = #if (js && html5) lastPosition #else lastPosition.advance.x #end;
-
-								if (offsetX + widthValue - spaceWidth <= getWrapWidth())
-								{
-									wrap = false;
-								}
-							}
-						}
-					}
-
-					if (wrap)
-					{
-						if (align != JUSTIFY && (layoutGroup != null || layoutGroups.length > 0))
-						{
-							var previous = layoutGroup;
-							if (previous == null)
-							{
-								previous = layoutGroups[layoutGroups.length - 1];
-							}
-
-							// For correct selection rectangles and alignment, trim the trailing space of the previous line:
-							previous.width -= previous.getAdvance(previous.positions.length - 1);
-							previous.endIndex--;
-						}
-
-						var i = layoutGroups.length - 1;
-						var offsetCount = 0;
-
-						while (true)
-						{
-							layoutGroup = layoutGroups[i];
-
-							if (i > 0 && layoutGroup.startIndex > previousSpaceIndex)
-							{
-								offsetCount++;
-							}
-							else
-							{
-								break;
-							}
-
-							i--;
-						}
-
-						if (textIndex == previousSpaceIndex + 1)
-						{
-							alignBaseline();
-						}
-
-						offsetX = 0;
-
-						if (offsetCount > 0)
-						{
-							var bumpX = layoutGroups[layoutGroups.length - offsetCount].offsetX;
-
-							for (i in (layoutGroups.length - offsetCount)...layoutGroups.length)
-							{
-								layoutGroup = layoutGroups[i];
-								layoutGroup.offsetX -= bumpX;
-								layoutGroup.offsetY = offsetY + GUTTER;
-								layoutGroup.lineIndex = lineIndex;
-								offsetX += layoutGroup.width;
-							}
-						}
-
-						placeText(endIndex);
-
-						wrap = false;
-					}
-					else
-					{
-						if (layoutGroup != null && textIndex == spaceIndex)
-						{
-							// TODO: does this case ever happen?
-							if (align != JUSTIFY)
-							{
-								layoutGroup.endIndex = spaceIndex;
-								layoutGroup.positions = layoutGroup.positions.concat(positions);
-								layoutGroup.width += widthValue;
-							}
-
-							offsetX += widthValue;
-
-							textIndex = endIndex;
-						}
-						else if (layoutGroup == null || align == JUSTIFY)
-						{
-							placeText(endIndex);
-							if (endIndex == text.length) alignBaseline();
-						}
-						else
-						{
-							var tempRangeEnd = endIndex < formatRange.end ? endIndex : formatRange.end;
-
-							if (tempRangeEnd < endIndex)
-							{
-								positions = getPositions(text, textIndex, tempRangeEnd);
-								widthValue = getPositionsWidth(positions);
-							}
-
-							layoutGroup.endIndex = tempRangeEnd;
-							layoutGroup.positions = layoutGroup.positions.concat(positions);
-							layoutGroup.width += widthValue;
-
-							offsetX += widthValue;
-
-							if (tempRangeEnd == formatRange.end)
-							{
-								layoutGroup = null;
-								nextFormatRange();
-								setLineMetrics();
-
-								textIndex = tempRangeEnd;
-
-								if (tempRangeEnd != endIndex)
-								{
-									placeFormattedText(endIndex);
-								}
-							}
-
-							// If next char is newline, process it immediately and prevent useless extra layout groups
-							// TODO: is this needed?
-							if (breakIndex == endIndex) endIndex++;
-
-							textIndex = endIndex;
-
-							if (endIndex == text.length) alignBaseline();
-						}
-					}
-
-					var nextSpaceIndex = text.indexOf(" ", textIndex);
-
-					// Check if we can continue wrapping this line until the next line-break or end-of-String.
-					// When `previousSpaceIndex == breakIndex`, the loop has finished growing layoutGroup.endIndex until the end of this line.
-
-					if (breakIndex == previousSpaceIndex)
-					{
-						layoutGroup.endIndex = breakIndex;
-
-						if (breakIndex - layoutGroup.startIndex - layoutGroup.positions.length < 0)
-						{
-							// Newline has no size
-							layoutGroup.positions.push(#if (js && html5) 0.0 #else null #end);
-						}
-
-						textIndex = breakIndex + 1;
-					}
-
-					previousSpaceIndex = spaceIndex;
-					spaceIndex = nextSpaceIndex;
-
-					if ((breakIndex > -1 && breakIndex <= textIndex && (spaceIndex > breakIndex || spaceIndex == -1))
-						|| textIndex > text.length)
-					{
-						break;
-					}
+					if (paragraph.startIndex >= textFormatRanges[i].start && paragraph.startIndex < textFormatRanges[i].end) rangeIndex = i - 1;
 				}
 			}
+			else rangeIndex = textFormatRanges.length - 2; // for trailing newlines
+			
+			nextFormatRange(); // TODO: error check here
+			
+			var startIndex = paragraph.startIndex;
+			var endIndex = formatRange.end < paragraph.endIndex ? formatRange.end : paragraph.endIndex;
+			
+			if (startIndex == endIndex)
+			{
+				layoutGroup = new TextLayoutGroup(formatRange.format, startIndex, endIndex);
+				
+				layoutGroup.positions = [];
+				layoutGroup.lineIndex = lineIndex;
+				layoutGroup.width = 0;
+				layoutGroup.ascent = ascent;
+				layoutGroup.descent = descent;
+				
+				line = paragraph.addLayoutGroup(layoutGroup);
+				return;
+			}
+			
+			if (!wordWrap)
+			{
+				// place from p.start to p.end in a single line
+				// TODO: maybe it should still be done word by word, just without wrapping considerations?
+				var lgBuffer = placeText(startIndex, paragraph.endIndex);
+				for (lg in lgBuffer) paragraph.addLayoutGroup(lg);
+			}
+			
 			else
 			{
-				if (textIndex < text.length)
+				var runningWidth = 0.0, trailingSpaceWidth = 0.0;
+				layoutGroup = null;
+				
+				while (startIndex < paragraph.endIndex)
 				{
-					// if there are no line breaks or spaces to deal with next, place all remaining text
-
-					setFormattedPositions(textIndex, text.length);
-					placeText(text.length);
-
-					alignBaseline();
+					var nextSpace = text.indexOf(" ", startIndex);
+					// TODO: if nextspace == startindex, handle leading spaces somehow
+					if (nextSpace > paragraph.endIndex) nextSpace = -1; // ignore any spaces beyond the paragraph bounds
+					endIndex = nextSpace < paragraph.endIndex && nextSpace > -1 ? nextSpace : paragraph.endIndex;
+					
+					var wordWidth = 0.0; // this includes format changes within a single word
+					
+					var availableWidth = width - paragraph.getAllMargin(lineIndex);
+					var lgBuffer = placeText(startIndex, endIndex);
+					
+					for (lg in lgBuffer) wordWidth += lg.width;
+					
+					if (wordWrap && runningWidth + wordWidth > availableWidth)
+					{
+						if (runningWidth > 0)
+						{
+							trace("wrap", text.substring(startIndex, endIndex));
+							// wrap
+							lineIndex++;
+							availableWidth = width - paragraph.getAllMargin(lineIndex); // available width may have changed moving to the next line
+						}
+						
+						if (wordWidth > availableWidth)
+						{
+							trace("blw", text.substring(startIndex, endIndex));
+							// break long words
+							
+							// this will split at least one lg into two
+							// different lines can have different available widths, keep in mind
+						}
+						
+						else
+						{
+							// place word normally
+							
+							for (lg in lgBuffer) {
+								lg.lineIndex = lineIndex;
+								line = paragraph.addLayoutGroup(lg);
+							}
+							
+							runningWidth = wordWidth;
+						}
+					}
+					
+					else
+					{
+						trace("place", runningWidth, wordWidth, text.substring(startIndex, endIndex));
+						// place word, cache it if lgBuffer length == 1
+						for (lg in lgBuffer) {
+							line = paragraph.addLayoutGroup(lg);
+						}
+						
+						runningWidth += wordWidth;
+						if (line != null) line.trailingSpaceWidth = trailingSpaceWidth; // this gets overridden until you actually hit the final word and its trailing spaces
+					}
+					
+					if (nextSpace > -1)
+					{
+						var spaceEndIndex = text.indexOf(" ", nextSpace + 1);
+						/*
+						while (spaceEndIndex == nextSpace + 1)
+						{
+							// append format-aware space to previous lg or new one
+							// only spaces, not hyphens
+							nextSpace = spaceEndIndex;
+							spaceEndIndex = text.indexOf(" ", nextSpace + 1);
+							break;
+						}
+						*/
+						
+						// append final spaces (or only space), but format-aware
+						// only other edge would be a full line of spaces before any content...
+						// getPositions(text, firstSpace, lastSpace + 1)
+						var spaces = placeText(nextSpace, nextSpace + 1);
+						var spaceWidth = 0.0;
+						
+						for (lg in spaces)
+						{
+							paragraph.addLayoutGroup(lg);
+							spaceWidth += lg.width;
+						}
+						
+						runningWidth += spaceWidth;
+						trailingSpaceWidth = spaceWidth; // TODO: should this get set to 0 if nextSpace == -1?
+					}
+					
+					else
+					{
+						// no spaces left to trail, modify
+						line.trailingSpaceWidth = 0;
+					}
+					
+					startIndex = endIndex + 1;
 				}
-
-				textIndex++;
 			}
 		}
-
-		// if final char is a line break, create an empty layoutGroup for it
-		if (previousBreakIndex == textIndex - 2 && previousBreakIndex > -1)
+		
+		paragraphs.length = 0;
+		
+		var start = 0, end = 0;
+		for (i in 0...lineBreaks.length + 1)
 		{
-			nextLayoutGroup(textIndex - 1, textIndex - 1);
-
-			layoutGroup.positions = [];
-			layoutGroup.ascent = ascent;
-			layoutGroup.descent = descent;
-			layoutGroup.leading = leading;
-			layoutGroup.lineIndex = lineIndex - 1; // undo final alignBaseline
-			layoutGroup.offsetX = getBaseX(); // TODO: double check it doesn't default to GUTTER or something
-			layoutGroup.offsetY = offsetY + GUTTER - heightValue; // undo final alignBaseline
-			layoutGroup.width = 0;
-			layoutGroup.height = heightValue;
+			end = i >= lineBreaks.length ? text.length : lineBreaks[i] + 1;
+			trace('Para $start,$end');
+			paragraph = new TextParagraph(start, end); // TODO: remove local var
+			paragraphs.push(paragraph);
+			
+			layoutParagraph(paragraph);
+			lineIndex++;
+			
+			start = end;
 		}
-
+		
+		var index = 0, offY = GUTTER;
+		for (para in paragraphs)
+		{
+			para.offsetY = offY;
+			para.changeStartIndex(index);
+			para.finalize();
+			
+			for (line in para.lines) for (lg in line.layoutGroups) layoutGroups.push(lg);
+			
+			// previous paras can only affect subsequent ones via offsetY, lineIndex, and start/endIndex
+			offY += para.height;
+			index += para.endIndex - para.startIndex; // inline length getter
+		}
+		
 		#if openfl_trace_text_layout_groups
 		for (lg in layoutGroups)
 		{
@@ -1621,7 +1226,7 @@ class TextEngine
 		}
 		#end
 	}
-
+	
 	public function restrictText(value:UTF8String):UTF8String
 	{
 		if (value == null)
