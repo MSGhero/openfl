@@ -1065,6 +1065,7 @@ class TextEngine
 			
 			if (startIndex == endIndex)
 			{
+				// for trailing linebreaks
 				layoutGroup = new TextLayoutGroup(formatRange.format, startIndex, endIndex);
 				
 				layoutGroup.positions = [];
@@ -1093,94 +1094,87 @@ class TextEngine
 				while (startIndex < paragraph.endIndex)
 				{
 					var nextSpace = text.indexOf(" ", startIndex);
-					// TODO: if nextspace == startindex, handle leading spaces somehow
-					if (nextSpace > paragraph.endIndex) nextSpace = -1; // ignore any spaces beyond the paragraph bounds
+					
+					if (nextSpace >= paragraph.endIndex) nextSpace = -1; // ignore any spaces beyond the paragraph bounds
 					endIndex = nextSpace < paragraph.endIndex && nextSpace > -1 ? nextSpace : paragraph.endIndex;
 					
 					var wordWidth = 0.0; // this includes format changes within a single word
 					
 					var availableWidth = width - paragraph.getAllMargin(lineIndex);
-					var lgBuffer = placeText(startIndex, endIndex);
 					
-					for (lg in lgBuffer) wordWidth += lg.width;
-					
-					if (wordWrap && runningWidth + wordWidth > availableWidth)
+					// a double+ space will cause startIndex == endIndex, we can skip that
+					if (startIndex < endIndex)
 					{
-						if (runningWidth > 0)
-						{
-							trace("wrap", text.substring(startIndex, endIndex));
-							// wrap
-							lineIndex++;
-							availableWidth = width - paragraph.getAllMargin(lineIndex); // available width may have changed moving to the next line
-						}
+						var lgBuffer = placeText(startIndex, endIndex);
 						
-						if (wordWidth > availableWidth)
+						for (lg in lgBuffer) wordWidth += lg.width;
+						
+						if (wordWrap && runningWidth + wordWidth > availableWidth)
 						{
-							trace("blw", text.substring(startIndex, endIndex));
-							// break long words
+							if (runningWidth > 0)
+							{
+								trace("wrap", text.substring(startIndex, endIndex));
+								// wrap
+								lineIndex++;
+								availableWidth = width - paragraph.getAllMargin(lineIndex); // available width may have changed moving to the next line
+							}
 							
-							// this will split at least one lg into two
-							// different lines can have different available widths, keep in mind
+							if (wordWidth > availableWidth)
+							{
+								trace("blw", text.substring(startIndex, endIndex));
+								// break long words
+								
+								// this will split at least one lg into two
+								// different lines can have different available widths, keep in mind
+							}
+							
+							else
+							{
+								// place word normally
+								
+								for (lg in lgBuffer) {
+									lg.lineIndex = lineIndex;
+									line = paragraph.addLayoutGroup(lg);
+								}
+								
+								runningWidth = wordWidth;
+							}
 						}
 						
 						else
 						{
-							// place word normally
-							
+							// trace("place", runningWidth, wordWidth, text.substring(startIndex, endIndex));
+							// place word, cache it if lgBuffer length == 1
 							for (lg in lgBuffer) {
-								lg.lineIndex = lineIndex;
 								line = paragraph.addLayoutGroup(lg);
 							}
 							
-							runningWidth = wordWidth;
+							runningWidth += wordWidth;
+							if (line != null) line.trailingSpaceWidth = trailingSpaceWidth; // this gets overridden until you actually hit the final word and its trailing spaces
 						}
-					}
-					
-					else
-					{
-						trace("place", runningWidth, wordWidth, text.substring(startIndex, endIndex));
-						// place word, cache it if lgBuffer length == 1
-						for (lg in lgBuffer) {
-							line = paragraph.addLayoutGroup(lg);
-						}
-						
-						runningWidth += wordWidth;
-						if (line != null) line.trailingSpaceWidth = trailingSpaceWidth; // this gets overridden until you actually hit the final word and its trailing spaces
 					}
 					
 					if (nextSpace > -1)
 					{
-						var spaceEndIndex = text.indexOf(" ", nextSpace + 1);
-						/*
-						while (spaceEndIndex == nextSpace + 1)
-						{
-							// append format-aware space to previous lg or new one
-							// only spaces, not hyphens
-							nextSpace = spaceEndIndex;
-							spaceEndIndex = text.indexOf(" ", nextSpace + 1);
-							break;
-						}
-						*/
-						
-						// append final spaces (or only space), but format-aware
+						// append spaces
 						// only other edge would be a full line of spaces before any content...
-						// getPositions(text, firstSpace, lastSpace + 1)
+						// TODO: maybe do a bunch of spaces at once? low prio: getPositions(text, firstSpace, lastSpace + 1)
 						var spaces = placeText(nextSpace, nextSpace + 1);
 						var spaceWidth = 0.0;
 						
 						for (lg in spaces)
 						{
-							paragraph.addLayoutGroup(lg);
+							line = paragraph.addLayoutGroup(lg);
 							spaceWidth += lg.width;
 						}
 						
 						runningWidth += spaceWidth;
-						trailingSpaceWidth = spaceWidth; // TODO: should this get set to 0 if nextSpace == -1?
+						trailingSpaceWidth = spaceWidth;
 					}
 					
 					else
 					{
-						// no spaces left to trail, modify
+						// no spaces left to trail, set the width back to 0
 						line.trailingSpaceWidth = 0;
 					}
 					

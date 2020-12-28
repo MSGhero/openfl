@@ -73,14 +73,17 @@ class TextLine
 		
 		var delta = newStartIndex - startIndex;
 		
-		for (lg in layoutGroups)
+		if (delta != 0)
 		{
-			lg.startIndex += delta;
-			lg.endIndex += delta;
+			for (lg in layoutGroups)
+			{
+				lg.startIndex += delta;
+				lg.endIndex += delta;
+			}
+			
+			startIndex = newStartIndex;
+			endIndex += delta;
 		}
-		
-		startIndex = newStartIndex;
-		endIndex += delta;
 	}
 	
 	public function finalize():Void
@@ -121,7 +124,7 @@ class TextLine
 		
 		// cull trailing spaces from width, so alignment happens correctly
 		width -= trailingSpaceWidth;
-		trace(lineIndex, width);
+		
 		startIndex = layoutGroups[0].startIndex;
 		endIndex = layoutGroups[layoutGroups.length - 1].endIndex;
 	}
