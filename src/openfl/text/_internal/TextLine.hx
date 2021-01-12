@@ -6,6 +6,8 @@ class TextLine
 	public var endIndex:Int;
 	public var lineIndex:Int;
 	
+	// consider removing all/most of this from line
+	// it may be better and clearer to leave it, but maybe not
 	public var ascent:Float;
 	public var descent:Float;
 	public var height:Int;
@@ -42,7 +44,8 @@ class TextLine
 		
 		else
 		{
-			var lastLG = layoutGroups[layoutGroups.length - 1];
+			var lastLG = layoutGroups[layoutGroups.length - 1]; // RTL and especially bidi will throw this off... maybe maintain index separately
+			// hm a linked list would be kinda good for bidi... even for prepending RTL...
 			
 			if (lastLG.endIndex != lg.startIndex) {
 				throw "uh oh";
@@ -50,7 +53,7 @@ class TextLine
 			
 			if (lastLG.lineIndex == lg.lineIndex && lastLG.format == lg.format)
 			{
-				lastLG.positions = lastLG.positions.concat(lg.positions);
+				lastLG.positions = lastLG.positions.concat(lg.positions); // this is where RTL doesn't happen
 				lastLG.endIndex = lg.endIndex;
 				lastLG.width += lg.width;
 			}
@@ -67,8 +70,9 @@ class TextLine
 		}
 	}
 	
-	public function changeStartIndex(newStartIndex:Int):Void {
-		
+	public function changeStartIndex(newStartIndex:Int):Void
+	{
+		// i'm spending a lot of time thinking ahead to modifying paragraphs... is that a good approach?
 		if (layoutGroups.length <= 0 || newStartIndex == startIndex) return;
 		
 		var delta = newStartIndex - startIndex;
@@ -123,6 +127,7 @@ class TextLine
 		}
 		
 		// cull trailing spaces from width, so alignment happens correctly
+		// consider where leading/trailing spaces go in RTL
 		width -= trailingSpaceWidth;
 		
 		startIndex = layoutGroups[0].startIndex;

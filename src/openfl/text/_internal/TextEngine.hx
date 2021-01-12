@@ -577,8 +577,8 @@ class TextEngine
 		var cr = -1, lf = -1;
 		while (index < text.length)
 		{
-			cr = text.indexOf("\n", index + 1);
-			lf = text.indexOf("\r", index + 1);
+			lf = text.indexOf("\n", index + 1);
+			cr = text.indexOf("\r", index + 1);
 			
 			index = 
 				if (cr == -1) lf;
@@ -937,86 +937,7 @@ class TextEngine
 
 			return false;
 		}
-/*
-		#if !js inline #end function breakLongWords(endIndex:Int):Void
-
-		{
-			// breaks up words that are too long to fit in a single line
-
-			var remainingPositions = positions;
-			var i, bufferCount, placeIndex, positionWidth;
-			var currentPosition;
-
-			var tempWidth = getPositionsWidth(remainingPositions);
-
-			while (remainingPositions.length > 0 && offsetX + tempWidth > getWrapWidth())
-			{
-				i = bufferCount = 0;
-				positionWidth = 0.0;
-
-				while (offsetX + positionWidth < getWrapWidth())
-				{
-					currentPosition = remainingPositions[i];
-
-					if (#if (js && html5) currentPosition #else currentPosition.advance.x #end == 0.0)
-					{
-						// skip Unicode character buffer positions
-						i++;
-						bufferCount++;
-					}
-					else
-					{
-						positionWidth += #if (js && html5) currentPosition #else currentPosition.advance.x #end;
-						i++;
-					}
-				}
-
-				// if there's no room to put even a single character, automatically wrap the next character
-				if (i == bufferCount)
-				{
-					i = bufferCount + 1;
-				}
-				else
-				{
-					// remove characters until the text fits one line
-					// because of combining letters potentially being broken up now, we have to redo the formatted positions each time
-					// TODO: this may not work exactly with Unicode buffer characters...
-					// TODO: maybe assume no combining letters, then compare result to i+1 and i-1 results?
-					while (i > 1 && offsetX + positionWidth > getWrapWidth())
-					{
-						i--;
-
-						if (i - bufferCount > 0)
-						{
-							//setFormattedPositions(textIndex, textIndex + i - bufferCount);
-							positionWidth = widthValue;
-						}
-						else
-						{
-							// TODO: does this run anymore?
-
-							i = 1;
-							bufferCount = 0;
-
-							//setFormattedPositions(textIndex, textIndex + 1);
-							positionWidth = 0; // breaks out of the loops
-						}
-					}
-				}
-
-				placeIndex = textIndex + i - bufferCount;
-				//placeFormattedText(placeIndex);
-				//alignBaseline();
-
-				//setFormattedPositions(placeIndex, endIndex);
-
-				remainingPositions = positions;
-				tempWidth = widthValue;
-			}
-
-			// positions only contains the final unbroken line at the end
-		}
-*/
+		
 		#if !js inline #end function placeText(startIndex:Int, endIndex:Int):Array<TextLayoutGroup>
 
 		{
@@ -1045,10 +966,31 @@ class TextEngine
 			return ret;
 		}
 		
+		function splitLayoutGroup(lgBuffer:Array<TextLayoutGroup>, index:Int, positionIndex:Int):Void
+		{
+			// modifies lgbuffer inplace
+			var lg = lgBuffer[index];
+			var pos = lg.positions.splice(positionIndex, lg.positions.length - positionIndex);
+			var newEnd = lg.endIndex;
+			lg.width = getPositionsWidth(lg.positions);
+			lg.endIndex = lg.startIndex + positionIndex;
+			
+			var newLG = new TextLayoutGroup(lg.format, lg.endIndex, newEnd);
+			newLG.positions = pos;
+			newLG.lineIndex = lineIndex; // this may be redundant if blw is the only time this function is used, go step by step later
+			newLG.width = getPositionsWidth(pos);
+			newLG.ascent = ascent;
+			newLG.descent = descent;
+			
+			lgBuffer.insert(index + 1, newLG); // i swear linked lists are looking better and better every day
+		}
+		
 		function layoutParagraph(paragraph:TextParagraph):Void
 		{
 			rangeIndex = -1;
 			
+			// i'd like to improve this, the search isn't really needed
+			// maybe check formatRange bounds and ++ if needed? it should be linear
 			if (paragraph.startIndex < paragraph.endIndex)
 			{
 				for (i in 0...textFormatRanges.length)
@@ -1056,7 +998,7 @@ class TextEngine
 					if (paragraph.startIndex >= textFormatRanges[i].start && paragraph.startIndex < textFormatRanges[i].end) rangeIndex = i - 1;
 				}
 			}
-			else rangeIndex = textFormatRanges.length - 2; // for trailing newlines
+			else rangeIndex = textFormatRanges.length - 2;
 			
 			nextFormatRange(); // TODO: error check here
 			
@@ -1066,6 +1008,7 @@ class TextEngine
 			if (startIndex == endIndex)
 			{
 				// for trailing linebreaks
+				// fix lineindex and offsety for input vs dynamic text
 				layoutGroup = new TextLayoutGroup(formatRange.format, startIndex, endIndex);
 				
 				layoutGroup.positions = [];
@@ -1099,6 +1042,7 @@ class TextEngine
 					endIndex = nextSpace < paragraph.endIndex && nextSpace > -1 ? nextSpace : paragraph.endIndex;
 					
 					var wordWidth = 0.0; // this includes format changes within a single word
+					var blwWidth = 0.0;
 					
 					var availableWidth = width - paragraph.getAllMargin(lineIndex);
 					
@@ -1122,10 +1066,52 @@ class TextEngine
 							if (wordWidth > availableWidth)
 							{
 								trace("blw", text.substring(startIndex, endIndex));
-								// break long words
+								// break long words up into multiple lines
 								
-								// this will split at least one lg into two
-								// different lines can have different available widths, keep in mind
+								// if there is already some text on the line, start the long word on the next line
+								if (runningWidth > 0) lineIndex++;
+								
+								blwWidth = 0.0;
+								
+								// these arrays will be modified during iteration, so we use while loops
+								var lg, i = 0, j = 0;
+								while (i < lgBuffer.length)
+								{
+									lg = lgBuffer[i];
+									lg.lineIndex = lineIndex;
+									
+									if (blwWidth + lg.width <= availableWidth) blwWidth += lg.width;
+									
+									else
+									{
+										j = 0;
+										while (j < lg.positions.length)
+										{
+											var ww = lg.positions[j]#if !(js && html5) .advance.x #end;
+											
+											// the first character should always be placed on a wrapped line, regardless of the available width, preventing an infinite loop
+											if (j == 0 || blwWidth + ww <= availableWidth) blwWidth += ww;
+											else {
+												// split the current layout group into two, placing the second on the next line
+												lineIndex++;
+												splitLayoutGroup(lgBuffer, i, j);
+												
+												availableWidth = width - paragraph.getAllMargin(lineIndex); // make a function since it's duplicate code
+												blwWidth = 0;
+											}
+											
+											j++;
+										}
+									}
+									
+									i++;
+								}
+								
+								for (lg in lgBuffer) {
+									line = paragraph.addLayoutGroup(lg);
+								}
+								
+								runningWidth = blwWidth;
 							}
 							
 							else
@@ -1144,7 +1130,7 @@ class TextEngine
 						else
 						{
 							// trace("place", runningWidth, wordWidth, text.substring(startIndex, endIndex));
-							// place word, cache it if lgBuffer length == 1
+							// place word, cache it if lgBuffer length == 1... or maybe cache each lg
 							for (lg in lgBuffer) {
 								line = paragraph.addLayoutGroup(lg);
 							}
@@ -1190,7 +1176,7 @@ class TextEngine
 		{
 			end = i >= lineBreaks.length ? text.length : lineBreaks[i] + 1;
 			trace('Para $start,$end');
-			paragraph = new TextParagraph(start, end); // TODO: remove local var
+			paragraph = new TextParagraph(start, end);
 			paragraphs.push(paragraph);
 			
 			layoutParagraph(paragraph);

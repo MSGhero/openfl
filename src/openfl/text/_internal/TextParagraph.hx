@@ -47,6 +47,11 @@ class TextParagraph
 	
 	public function addLine(line:TextLine):Void
 	{
+		// inline
+		// *** also consider paragraphs as helpers, and there's really just a single line array that everything gets added to ***
+		// maybe even consider lines as helpers on top of a single layout group array, which would be most ideal
+		// ugh linked list sounds really good there
+		// you could even be tricky and begin iteration at the head or tail depending on where modifications occur, or even go by paragraph, but that's for the future
 		lines.push(line);
 	}
 	
@@ -54,7 +59,7 @@ class TextParagraph
 	{
 		var line:TextLine = null;
 		
-		// TODO: issue for subsequent paras... lineIndex will always be > 0 when lines length is 0
+		// maybe this check could be more robust? or less annoying
 		if (lines.length == 0 || lg.lineIndex > lines[lines.length - 1].lineIndex)
 		{
 			if (lines.length == 0)
@@ -84,8 +89,9 @@ class TextParagraph
 		return line;
 	}
 	
-	public function changeStartIndex(newStartIndex:Int):Void {
-		
+	public function changeStartIndex(newStartIndex:Int):Void
+	{
+		// inline?
 		if (lines.length <= 0 || newStartIndex == startIndex) return;
 		
 		for (line in lines) line.changeStartIndex(newStartIndex);
@@ -116,11 +122,13 @@ class TextParagraph
 	
 	public function getBaseMargin(relativeLineIndex:Int):Float
 	{
+		// inline?
 		return Math.max(2, offsetX + leftMargin + blockIndent + (relativeLineIndex == 0 ? indent : 0)); // GUTTER
 	}
 		
 	public function getAllMargin(lineIndex:Int):Float
 	{
+		// inline?
 		var base = getBaseMargin(lines.length == 0 ? 0 : lineIndex - lines[0].lineIndex);
 		return Math.max(4, base + 2 + rightMargin); // GUTTER
 	}			
